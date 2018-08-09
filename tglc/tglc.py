@@ -1,6 +1,17 @@
 #!/usr/bin/env python
 
+"""Classes to read, manipulate, and write 2G magnetometer data files.
+
+The main focus is simple editing procedures on files, rather than data
+analysis. This module can be used, for example, to remove measurements
+affected by edge effects at the ends of a core; to rewrite depths
+for measurements; to combine several data files into one; and of course
+to load and save files in the 2G format. It is suitable for use with
+both the CPython and Jython interpreters.
+"""
+
 from math import sqrt
+
 
 class Header:
 
@@ -21,6 +32,7 @@ class Header:
     def add_field(self, field_name):
         self.fields[field_name] = self.nfields
         self.nfields += 1
+
 
 class Line:
 
@@ -51,7 +63,7 @@ class Line:
         return int(float(self.get('Depth')) * 100)
 
     def get_moment_Gcm3(self):
-        "Return raw moment in emu (gauss * cm^3)"
+        """Return raw moment in emu (gauss * cm^3)"""
         return sqrt(self.getfloat("X mean")**2 +
                     self.getfloat("Y mean")**2 +
                     self.getfloat("Z mean")**2)
@@ -62,6 +74,7 @@ class Line:
 
     def add_value(self, value):
         self.parts.append(value)
+
 
 class File:
 
@@ -115,7 +128,7 @@ class File:
         def rewrite(string_val):
             float_in = float(string_val)
             float_out = fn(float_in)
-            string_out = '%.2f' % float_out
+            string_out = '%.0f' % float_out
             return string_out
         self.change('Depth', rewrite)
 
@@ -165,3 +178,97 @@ class File:
                 data.append([float(line.get("Depth")),
                              float(line.get("Intensity"))])
         return data
+
+
+def assemble_sections(input_file_template, output_file,
+                      section_list, ms_only=False):
+    """Assemble core sections into an entire core.
+
+    section_list is a list of 4-tuples. Each 4-tuple has the
+    following form:
+
+    (name [str], section_length [int], empty_bottom [int], empty_top [int])
+
+    "name" is a string label for the section, used to find the data
+    file. section_length is the length of the actual core section,
+    which may be shorter than the length of magnetometer track measured.
+    empty_bottom and empty_top specify the lengths of the empty track
+    sections below and above the core. These three integers should add
+    up to the total length of measured data in the corresponding file.
+    (If they don't, this function will throw an assertion error.)
+
+    The ordering of the sections in section_list determines the
+    order of section assembly. Sections are ordered from top to
+    bottom, so the top of the first section in the list will be at 0 cm
+    depth.
+
+    A note on the empty_bottom and empty_top parameters: these are
+    used to remove measured data that doesn't come from the core itself
+    and doesn't correspond to any sampled depth. Such measurements are
+    taken when the core section itself is shorter than the measured
+    track length. For instance, if the 2G software is told to measure
+    110cm of data, and a 100cm core is placed at a 5cm offset from
+    the start of the track, the first and last 5cm will be "empty"
+    measurements and can be removed from the data using empty_bottom
+    and empty_top parameters.
+
+    The sections removed using empty_bottom and empty_top are really
+    removed from the depth stack. In contrast, data erased to avoid edge
+    effects in the top/bottom few cm still leaves a gap with an
+    associated depth: it's a missing measurement at a valid depth,
+    whereas empty_bottom / empty_top removes measurements which don't
+    even have a valid depth.
+
+    There is a slight fencepost complication in the way depths are
+    added up. On, say, a 100 cm core, measurements are taken at each
+    point from 0 cm to 100 cm. The number of measurements is thus
+    one more than the number of centimetres in the core. The first
+    and last measurements don't have a unique depth: the bottom-most
+    measurement of a core is at the same depth as the topmost measurement
+    from the core below it. Thus, if we do an "edge-effect"  removal
+    of four measurements from the adjacent ends of two cores, we're actually
+    only blanking out measurements through 2 * 4 - 1 = 7 cm of depth.
+
+    Args:
+        input_file_template: a template for the input filename. It should
+            contain the string "%s", which will be replaced in turn with
+            each "name" field from section_list.
+        output_file: name for the the assembled file to be written
+        section_list: list of section codes and truncation specifiers
+        ms_only: True iff the files contain only magnetic susceptibility data
+
+    """
+
+    section_names = [section[0] for section in section_list]
+    section_dict = {section[0]: (section[1], section[2], section[3])
+                    for section in section_list}
+
+    sections = []
+    top = 0
+    for section in section_names:
+        f = File()
+        f.read(input_file_template % section)
+        edge_thickness = 4  # amount to chop off for edge effects
+        section_length, empty_bottom, empty_top = \
+            section_dict[section]
+        f.truncate(empty_bottom,
+                   empty_top)  # chop off the empty tray
+        thickness = f.get_thickness()  # thickness of the actual mud
+        assert thickness == section_length, \
+            "specified length %d does not equal actual length %d" % \
+            (section_length, thickness)
+        f.truncate(edge_thickness, edge_thickness)
+
+        def depth(x):
+            return top + thickness - x*100 + empty_bottom
+
+        f.change_depth(depth)
+        if ms_only:
+            f.chop_fields("Depth\tMS corr\n")
+        sections.append(f)
+        top += thickness
+
+    composite = File()
+    composite.concatenate(sections)
+    composite.sort()
+    composite.write(output_file)
