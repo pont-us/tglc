@@ -1,1 +1,1 @@
-__all__ = ["tglc.py"]
+from .tglc import *
