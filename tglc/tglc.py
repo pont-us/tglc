@@ -37,7 +37,7 @@ class Header:
 
     def __init__(self, line):
         self.line = line.strip()
-        self.field_names = self.line.split('\t')
+        self.field_names = self.line.split("\t")
         self.nfields = len(self.field_names)
         self.fields = {}
         for i in range(0, len(self.field_names)):
@@ -47,7 +47,7 @@ class Header:
         return self.line
 
     def has_field(self, field_name):
-        return (field_name in self.fields)
+        return field_name in self.fields
 
     def add_field(self, field_name):
         self.fields[field_name] = self.nfields
@@ -58,7 +58,7 @@ class Line:
 
     def __init__(self, header, line):
         self.header = header
-        self.parts = line.strip().split('\t')
+        self.parts = line.strip().split("\t")
 
     def get(self, field):
         return self.parts[self.header.fields[field]]
@@ -77,20 +77,21 @@ class Line:
         self.parts[index] = fn(self.parts[index])
 
     def to_string(self):
-        return '\t'.join(self.parts)
+        return "\t".join(self.parts)
 
     def get_depth(self):
-        return int(float(self.get('Depth')) * 100)
+        return int(float(self.get("Depth")) * 100)
 
+    # noinspection PyPep8Naming
     def get_moment_Gcm3(self):
         """Return raw moment in emu (gauss * cm^3)"""
-        return sqrt(self.getfloat("X mean")**2 +
-                    self.getfloat("Y mean")**2 +
-                    self.getfloat("Z mean")**2)
+        return sqrt(self.getfloat("X mean") ** 2 +
+                    self.getfloat("Y mean") ** 2 +
+                    self.getfloat("Z mean") ** 2)
 
     def flip(self):
-        self.change('Y corr', lambda x: str(-float(x)))
-        self.change('Z corr', lambda x: str(-float(x)))
+        self.change("Y corr", lambda x: str(-float(x)))
+        self.change("Z corr", lambda x: str(-float(x)))
 
     def add_value(self, value):
         self.parts.append(value)
@@ -100,30 +101,32 @@ class File:
 
     def __init__(self):
         self.lines = []
+        self.header = None
+        self.min_depth = None
+        self.max_depth = None
 
     def read(self, filename):
         with open(filename, "U") as fh:
             self.header = Header(fh.readline())
             for line in fh:
                 line = Line(self.header, line)
-                if len(line.parts)>1:
+                if len(line.parts) > 1:
                     self.lines.append(line)
         if not self.header.has_field("Depth"):
             self.fake_depth()
         self.update_depths()
-        #if self.header.has_field("Depth"): self.update_depths()
 
     def write(self, filename):
-        with open(filename, 'w') as fh:
-            fh.write(self.header.to_string() + '\n')
+        with open(filename, "w") as fh:
+            fh.write(self.header.to_string() + "\n")
             for line in self.lines:
-                fh.write(line.to_string() + '\n')
+                fh.write(line.to_string() + "\n")
 
     def fake_depth(self):
         self.header.add_field("Depth")
         depth = 0
         for line in self.lines:
-            line.add_value(str(float(depth)/100.))
+            line.add_value(str(float(depth) / 100.))
             depth += 1
 
     def change(self, field, fn):
@@ -135,8 +138,10 @@ class File:
         self.min_depth = 1e99
         for line in self.lines:
             depth = line.get_depth()
-            if depth > self.max_depth: self.max_depth = depth
-            if depth < self.min_depth: self.min_depth = depth
+            if depth > self.max_depth:
+                self.max_depth = depth
+            if depth < self.min_depth:
+                self.min_depth = depth
 
     def get_max_depth(self):
         return self.max_depth
@@ -148,9 +153,9 @@ class File:
         def rewrite(string_val):
             float_in = float(string_val)
             float_out = fn(float_in)
-            string_out = '%.0f' % float_out
+            string_out = "%.0f" % float_out
             return string_out
-        self.change('Depth', rewrite)
+        self.change("Depth", rewrite)
 
     def truncate(self, at_top, at_bottom):
         if at_top == at_bottom == 0:
@@ -161,15 +166,15 @@ class File:
         limit1 = self.max_depth - at_bottom
         for line in self.lines:
             depth = line.get_depth()
-            if depth >= limit0 and depth <= limit1:
+            if limit0 <= depth <= limit1:
                 new_lines.append(line)
         self.lines = new_lines
         self.update_depths()
 
-    def set_depths(self, start=0, increment = 1):
+    def set_depths(self, start=0, increment=1):
         depth = start
         for line in self.lines:
-            line.set('Depth', str(depth))
+            line.set("Depth", str(depth))
             depth += increment
 
     def concatenate(self, files):
@@ -188,7 +193,7 @@ class File:
         self.header = new_header
 
     def sort(self):
-        self.lines.sort(key = lambda x: x.get_depth())
+        self.lines.sort(key=lambda x: x.get_depth())
 
     def flip(self):
         for line in self.lines:
@@ -197,7 +202,7 @@ class File:
     def extract_step_intensity(self, step):
         data = []
         for line in self.lines:
-            if line.get('AF Z') == step:
+            if line.get("AF Z") == step:
                 data.append([float(line.get("Depth")),
                              float(line.get("Intensity"))])
         return data
