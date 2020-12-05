@@ -133,6 +133,9 @@ class File:
         self.change('Depth', rewrite)
 
     def truncate(self, at_top, at_bottom):
+        if at_top == at_bottom == 0:
+            return
+        
         new_lines = []
         limit0 = self.min_depth + at_top
         limit1 = self.max_depth - at_bottom
@@ -181,13 +184,14 @@ class File:
 
 
 def assemble_sections(input_file_template, output_file,
-                      section_list, ms_only=False):
+                      section_list, ms_only=False, edge_thickness=0):
     """Assemble core sections into an entire core.
 
-    section_list is a list of 4-tuples. Each 4-tuple has the
+    section_list is a list of 4- or 5-tuples. Each tuple has the
     following form:
 
-    (name [str], section_length [int], empty_bottom [int], empty_top [int])
+    (name [str], section_length [int], empty_bottom [int], empty_top [int],
+     top_space [int, optional])
 
     "name" is a string label for the section, used to find the data
     file. section_length is the length of the actual core section,
@@ -196,6 +200,13 @@ def assemble_sections(input_file_template, output_file,
     sections below and above the core. These three integers should add
     up to the total length of measured data in the corresponding file.
     (If they don't, this function will throw an assertion error.)
+
+    top_space may be omitted. If included, it denotes a non-sampled space
+    at the top of the core section (e.g. if some material was lost when
+    sectioning or u-channelling the core). top_space is added to to the
+    depth counter at the top of the core, so it has the effect of offsetting
+    all depths from the top of that section downwards by the specified
+    amount, increasing the total core length.
 
     The ordering of the sections in section_list determines the
     order of section assembly. Sections are ordered from top to
@@ -216,8 +227,8 @@ def assemble_sections(input_file_template, output_file,
     removed from the depth stack. In contrast, data erased to avoid edge
     effects in the top/bottom few cm still leaves a gap with an
     associated depth: it's a missing measurement at a valid depth,
-    whereas empty_bottom / empty_top removes measurements which don't
-    even have a valid depth.
+    whereas empty_bottom / empty_top removes measurements which aren't
+    even associated with a valid depth.
 
     There is a slight fencepost complication in the way depths are
     added up. On, say, a 100 cm core, measurements are taken at each
@@ -236,11 +247,15 @@ def assemble_sections(input_file_template, output_file,
         output_file: name for the the assembled file to be written
         section_list: list of section codes and truncation specifiers
         ms_only: True iff the files contain only magnetic susceptibility data
+        edge_thickness: number of measurements to remove at the top and
+            bottom of each section to avoid edge effects. This will produce
+            depth gaps between sections.
 
     """
 
     section_names = [section[0] for section in section_list]
-    section_dict = {section[0]: (section[1], section[2], section[3])
+    section_dict = {section[0]: (section[1], section[2], section[3],
+                                 section[4] if len(section) == 5 else 0)
                     for section in section_list}
 
     sections = []
@@ -248,9 +263,9 @@ def assemble_sections(input_file_template, output_file,
     for section in section_names:
         f = File()
         f.read(input_file_template % section)
-        edge_thickness = 4  # amount to chop off for edge effects
-        section_length, empty_bottom, empty_top = \
+        section_length, empty_bottom, empty_top, extra_space = \
             section_dict[section]
+        top += extra_space
         f.truncate(empty_bottom,
                    empty_top)  # chop off the empty tray
         thickness = f.get_thickness()  # thickness of the actual mud
