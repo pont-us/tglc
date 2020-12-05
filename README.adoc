@@ -1,0 +1,14 @@
+= tglc: manipulate 2G data files
+
+tglc is a Python library to manipulate 2G magnetometer data files.
+
+It can do things like rewriting sample depths, inverting remanence
+measurements, and assembling multiple core sections into a single file with
+consistent depth data.
+
+The code is documented where necessary but should be mostly self-explanatory.
+
+tglc is compatible with Python versions 3.7 and up, and with version 2.7.
+
+tglc is copyright 2020 Pontus Lurcock (pont -at- talvi.net) and is released
+under the MIT license. The license text is included in the source code.
